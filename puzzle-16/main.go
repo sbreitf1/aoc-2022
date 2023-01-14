@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -15,7 +16,9 @@ func main() {
 
 	nw := readValveNetwork(lines)
 
-	maxPressureReleasePart1 := findMaxPressureReleasePart1(nw, "AA", "", 29, make(map[string]bool))
+	start1 := time.Now()
+	maxPressureReleasePart1 := findMaxPressureReleasePart1(nw, &dude{currentValve: "AA", visitedValvesSinceLastOpen: map[string]bool{"AA": true}}, 29, make(map[string]bool))
+	fmt.Println("took", time.Since(start1))
 
 	fmt.Println("-> part 1:", maxPressureReleasePart1)
 	//fmt.Println("-> part 2:", deleteCandidates[0].RecursiveSize)
@@ -25,6 +28,34 @@ type valveNetwork struct {
 	valveRates         map[string]int
 	valveJunctions     map[string][]string
 	openableValveCount int
+}
+
+type dude struct {
+	currentValve               string
+	visitedValvesSinceLastOpen map[string]bool
+}
+
+func (d *dude) Enter(valve string) string {
+	previousValve := d.currentValve
+	d.currentValve = valve
+	d.visitedValvesSinceLastOpen[valve] = true
+	return previousValve
+}
+
+func (d *dude) LeaveToPrevious(previousValve string) {
+	delete(d.visitedValvesSinceLastOpen, d.currentValve)
+	d.currentValve = previousValve
+}
+
+func (d *dude) OpenValve() *dude {
+	return &dude{
+		currentValve:               d.currentValve,
+		visitedValvesSinceLastOpen: map[string]bool{d.currentValve: true},
+	}
+}
+
+func (d *dude) CanEnter(valve string) bool {
+	return !d.visitedValvesSinceLastOpen[valve]
 }
 
 func readValveNetwork(lines []string) *valveNetwork {
@@ -52,7 +83,7 @@ func readValveNetwork(lines []string) *valveNetwork {
 	return nw
 }
 
-func findMaxPressureReleasePart1(nw *valveNetwork, currentValve, previousValve string, remainingTime int, openValves map[string]bool) int {
+func findMaxPressureReleasePart1(nw *valveNetwork, dude1 *dude, remainingTime int, openValves map[string]bool) int {
 	if remainingTime == 0 {
 		// time is up
 		return 0
@@ -64,29 +95,31 @@ func findMaxPressureReleasePart1(nw *valveNetwork, currentValve, previousValve s
 
 	maxPressureRelease := 0
 
-	valveRate, ok := nw.valveRates[currentValve]
+	valveRate, ok := nw.valveRates[dude1.currentValve]
 	if !ok {
-		helper.ExitWithMessage("no valve rate known for %s", currentValve)
+		helper.ExitWithMessage("no valve rate known for %s", dude1.currentValve)
 	}
-	if valveRate > 0 && !openValves[currentValve] {
+	if valveRate > 0 && !openValves[dude1.currentValve] {
 		// check solution with opening this valve:
-		openValves[currentValve] = true
+		openValves[dude1.currentValve] = true
 		// cut previous valve to allow going back after doing something here
-		maxPressureRelease = valveRate*remainingTime + findMaxPressureReleasePart1(nw, currentValve, "", remainingTime-1, openValves)
-		delete(openValves, currentValve)
+		maxPressureRelease = valveRate*remainingTime + findMaxPressureReleasePart1(nw, dude1.OpenValve(), remainingTime-1, openValves)
+		delete(openValves, dude1.currentValve)
 	}
 
-	valveJunctions, ok := nw.valveJunctions[currentValve]
+	valveJunctions, ok := nw.valveJunctions[dude1.currentValve]
 	if !ok {
-		helper.ExitWithMessage("no valve junctions known for %s", currentValve)
+		helper.ExitWithMessage("no valve junctions known for %s", dude1.currentValve)
 	}
 	for _, nextValve := range valveJunctions {
-		if nextValve == previousValve {
+		if !dude1.CanEnter(nextValve) {
 			// do not visit previous valve
 			continue
 		}
 		// check for every junction
-		pressureRelease := findMaxPressureReleasePart1(nw, nextValve, currentValve, remainingTime-1, openValves)
+		previousValve := dude1.Enter(nextValve)
+		pressureRelease := findMaxPressureReleasePart1(nw, dude1, remainingTime-1, openValves)
+		dude1.LeaveToPrevious(previousValve)
 		if pressureRelease > maxPressureRelease {
 			maxPressureRelease = pressureRelease
 		}
