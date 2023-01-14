@@ -20,11 +20,12 @@ func main() {
 	maxPressureReleasePart1 := findMaxPressureReleasePart1(nw, &dude{currentValve: "AA", visitedValvesSinceLastOpen: map[string]bool{"AA": true}}, 29, make(map[string]bool))
 	fmt.Println("took", time.Since(start1))
 
-	fmt.Println("-> part 1:", maxPressureReleasePart1)
+	fmt.Println("-> part 1:", maxPressureReleasePart1) //should be 2059
 	//fmt.Println("-> part 2:", deleteCandidates[0].RecursiveSize)
 }
 
 type valveNetwork struct {
+	bestSeenOption     int
 	valveRates         map[string]int
 	valveJunctions     map[string][]string
 	openableValveCount int
@@ -107,22 +108,29 @@ func findMaxPressureReleasePart1(nw *valveNetwork, dude1 *dude, remainingTime in
 		delete(openValves, dude1.currentValve)
 	}
 
-	valveJunctions, ok := nw.valveJunctions[dude1.currentValve]
-	if !ok {
-		helper.ExitWithMessage("no valve junctions known for %s", dude1.currentValve)
+	// time to visit next junction but then no time left to open a valve? => just end here
+	if remainingTime > 1 {
+		valveJunctions, ok := nw.valveJunctions[dude1.currentValve]
+		if !ok {
+			helper.ExitWithMessage("no valve junctions known for %s", dude1.currentValve)
+		}
+		for _, nextValve := range valveJunctions {
+			if !dude1.CanEnter(nextValve) {
+				// do not visit previous valve
+				continue
+			}
+			// check for every junction
+			previousValve := dude1.Enter(nextValve)
+			pressureRelease := findMaxPressureReleasePart1(nw, dude1, remainingTime-1, openValves)
+			dude1.LeaveToPrevious(previousValve)
+			if pressureRelease > maxPressureRelease {
+				maxPressureRelease = pressureRelease
+			}
+		}
 	}
-	for _, nextValve := range valveJunctions {
-		if !dude1.CanEnter(nextValve) {
-			// do not visit previous valve
-			continue
-		}
-		// check for every junction
-		previousValve := dude1.Enter(nextValve)
-		pressureRelease := findMaxPressureReleasePart1(nw, dude1, remainingTime-1, openValves)
-		dude1.LeaveToPrevious(previousValve)
-		if pressureRelease > maxPressureRelease {
-			maxPressureRelease = pressureRelease
-		}
+
+	if maxPressureRelease > nw.bestSeenOption {
+		nw.bestSeenOption = maxPressureRelease
 	}
 	return maxPressureRelease
 }
